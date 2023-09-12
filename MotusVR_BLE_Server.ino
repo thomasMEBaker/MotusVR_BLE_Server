@@ -4,14 +4,12 @@
 #include <BLEServer.h>
 #include <string>
 
-// See the following for generating UUIDs:
-// https://www.uuidgenerator.net/
-
 /*
 To do -
 Fix issue with connection on PC
 Sort out gamepad movement and range of scale
 Battery service
+Change to dynamically changing mac address name
 Connection and disconnection - move into classes and BLEServerCallbacks
 
   BLEService *pBatteryService = hid->batteryService();
@@ -22,12 +20,20 @@ Connection and disconnection - move into classes and BLEServerCallbacks
 */
 
 #define LED_BUILTIN 2
+
+// See the following for generating UUIDs - https://www.uuidgenerator.net/
 #define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
 #define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
-#define BATTERY_SERVICE_UUID   "0000180f-0000-1000-8000-00805f9b34fb"
-#define BATTERY_LEVEL_UUID     "00002a19-0000-1000-8000-00805f9b34fb"
+#define BATTERY_SERVICE_UUID   "0000180F-0000-1000-8000-00805F9B34FB" 
+#define BATTERY_LEVEL_UUID     "0000180F-0000-1000-8000-00805F9B34FB"
 
+static BLEServer *pServer;
+static BLEAdvertising *pAdvertising;
 static BLEHIDDevice* hid;
+static BLEService* batteryService;
+static BLECharacteristic* batteryLevelCharacteristic;
+
+
 static BLECharacteristic* pInput=NULL;
 static BLECharacteristic* pOutput=NULL;
 
@@ -92,16 +98,28 @@ class MyCallbacks : public BLEServerCallbacks {
     Serial.println("Disconnected device!");
     sendValues = false;
     digitalWrite(LED_BUILTIN, LOW);  
-  }
   };
+};
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(LED_BUILTIN, OUTPUT);
+  Serial.println("Starting BLE");
+  setupGamepadBLE();
+}
+
+void loop() {
+ toggleAButton();
+ delay(100);
+}
 
 void setupGamepadBLE(){
   
-  BLEDevice::init("MotusVR_BLE_3c:71:bf:fd:49:a6"); //needs sorting with the address below
+  BLEDevice::init("MotusVR_BLE_3c:71:bf:fd:49:a6");
   BLEAddress addr=BLEDevice::getAddress();
   Serial.println(addr.toString().c_str());
 
-  BLEServer *pServer = BLEDevice::createServer();
+  pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyCallbacks());
   BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT_NO_MITM);
 
@@ -120,12 +138,14 @@ void setupGamepadBLE(){
   hid->reportMap((uint8_t*)reportMapGamepad, sizeof(reportMapGamepad));
 	hid->startServices();
 
-  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->setAppearance(HID_GAMEPAD);// WALKING DEVICE 0x440;
   pAdvertising->addServiceUUID(hid->hidService()->getUUID());
   pAdvertising->setScanResponse(true);
   pAdvertising->setMinPreferred(0x06);  // functions that help with iPhone connections issue
   pAdvertising->setMaxPreferred(0x12);
+
+  setupBatteryService(); //doesn't seem to be working but needs testing
 
   pAdvertising->start();
 
@@ -138,12 +158,17 @@ void setupGamepadBLE(){
   Serial.println("Characteristic defined!");
 }
 
-void setup() {
-  Serial.begin(115200);
-  pinMode(LED_BUILTIN, OUTPUT);
-  Serial.println("Starting BLE");
-  setupGamepadBLE();
+
+void setupBatteryService() {
+  batteryService = pServer->createService(BATTERY_SERVICE_UUID);
+  batteryLevelCharacteristic = batteryService->createCharacteristic(BATTERY_LEVEL_UUID,BLECharacteristic::PROPERTY_READ);
+  uint8_t initialBatteryLevel = 50; 
+  batteryLevelCharacteristic->setValue(&initialBatteryLevel,1);
+  batteryService->start();
+  pAdvertising->addServiceUUID(batteryService->getUUID());
 }
+
+//test functions
 
 void toggleAButton(){
   //function to test gamepad on android & PC - use 3v to onto D23 to toggle A press on
@@ -158,7 +183,7 @@ void toggleAButton(){
       pInput->setValue(gamepadReport, sizeof(gamepadReport));
       pInput->notify();
     }
-}
+  }
 }
 
 void analogStockMovement(){
@@ -169,9 +194,3 @@ void analogStockMovement(){
     pInput->setValue(gamepadReport, sizeof(gamepadReport));
     pInput->notify();
     }
-
-void loop() {
- 
-}
-
-  
