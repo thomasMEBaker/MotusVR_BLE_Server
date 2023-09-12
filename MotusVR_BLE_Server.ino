@@ -7,18 +7,21 @@
 // See the following for generating UUIDs:
 // https://www.uuidgenerator.net/
 
-//battery service
 /*
+To do -
+Fix issue with connection on PC
+Sort out gamepad movement and range of scale
+Battery service
+Connection and disconnection - move into classes and BLEServerCallbacks
+
   BLEService *pBatteryService = hid->batteryService();
   BLECharacteristic *pBatteryLevelCharacteristic = pBatteryService->createCharacteristic(BATTERY_LEVEL_UUID,BLECharacteristic::PROPERTY_READ);
   uint8_t initialBatteryLevel = 50; // Example: 50%
   pBatteryLevelCharacteristic->setValue(&initialBatteryLevel, 1);
   pBatteryService->start();
-
 */
 
 #define LED_BUILTIN 2
-
 #define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
 #define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 #define BATTERY_SERVICE_UUID   "0000180f-0000-1000-8000-00805f9b34fb"
@@ -37,8 +40,6 @@ static uint8_t yAxis = 0;
 
 // Define constants for button indices
 const int BUTTON_A_INDEX = 1; // Index of the A button
-
-//https://github.com/espressif/esp-idf/issues/2863
 
 const uint8_t reportMapGamepad[] = {
   0x05, 0x01,       // USAGE_PAGE (Generic Desktop)
@@ -144,27 +145,33 @@ void setup() {
   setupGamepadBLE();
 }
 
-void loop() {
+void toggleAButton(){
+  //function to test gamepad on android & PC - use 3v to onto D23 to toggle A press on
   if(sendValues){
     if (digitalRead(23) == HIGH) {
-      
-      //digitalWrite(LED_BUILTIN, HIGH); 
-        // Simulate analog stick movement
-        //yAxis = 128;
-        // Set the report data for the input characteristic
-  
-    }else{
-      //digitalWrite(LED_BUILTIN, LOW); 
-        //yAxis = -128;
+      uint8_t gamepadReport[] = {BUTTON_A_INDEX, 0, 0, 0};
+      pInput->setValue(gamepadReport, sizeof(gamepadReport));
+      pInput->notify();
     }
-    uint8_t gamepadReport[] = {buttonState, 0, xAxis, yAxis};
-    pInput->setValue(gamepadReport, sizeof(gamepadReport));
-    
-    // Notify the central device about the updated report
-    pInput->notify();
-    Serial.print("Y Value Set - ");
-    Serial.println(yAxis);
+    else{
+      uint8_t gamepadReport[] = {0, 0, 0, 0};
+      pInput->setValue(gamepadReport, sizeof(gamepadReport));
+      pInput->notify();
+    }
 }
+}
+
+void analogStockMovement(){
+   // Simulate analog stick movement
+    xAxis = (xAxis + 1) % 256;
+    yAxis = (yAxis + 1) % 256;
+    uint8_t gamepadReport[] = {0, 0, xAxis, yAxis};
+    pInput->setValue(gamepadReport, sizeof(gamepadReport));
+    pInput->notify();
+    }
+
+void loop() {
+ 
 }
 
   
