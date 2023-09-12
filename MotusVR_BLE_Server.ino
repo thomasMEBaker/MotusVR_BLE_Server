@@ -28,12 +28,13 @@ static BLEHIDDevice* hid;
 static BLEService* batteryService;
 static BLECharacteristic* batteryLevelCharacteristic;
 
-
 static BLECharacteristic* pInput=NULL;
 static BLECharacteristic* pOutput=NULL;
 
 std::string manufacturerName = "MotusVR"; 
 bool sendValues = false;
+uint32_t passKey = 0;
+
 
 static uint8_t buttonState = 0;
 static uint8_t xAxis = 0;
@@ -96,12 +97,45 @@ class MyCallbacks : public BLEServerCallbacks {
   };
 };
 
+
+
+class MySecurity : public BLESecurityCallbacks {
+
+  	uint32_t onPassKeyRequest(){
+  		vTaskDelay(25000);
+      Serial.print("The passkey request");
+      Serial.println(passKey);
+    
+  		return passKey;
+  	}
+  	void onPassKeyNotify(uint32_t pass_key){
+          Serial.print("The passkey Notify number");
+          Serial.println(pass_key);
+          passKey = pass_key;
+  	}
+  	bool onSecurityRequest(){
+  		return true;
+  	}
+  	void onAuthenticationComplete(esp_ble_auth_cmpl_t auth_cmpl){
+  		if(auth_cmpl.success){
+        Serial.println("remote BD_ADDR:");
+  		}
+  	}
+	
+	virtual bool onConfirmPIN(uint32_t pin)
+	{
+		return true;
+	}
+
+	
+};
+
 void setup() {
   Serial.begin(115200);
   pinMode(LED_BUILTIN, OUTPUT);
   Serial.println("Starting BLE");
-  //setupGamepadBLE();
-  setupExampleCode();
+  setupGamepadBLE();
+  //setupExampleCode();
 }
 
 void loop() {
@@ -143,6 +177,7 @@ void setupGamepadBLE(){
   pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyCallbacks());
   BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT_NO_MITM);
+  BLEDevice::setSecurityCallbacks(new MySecurity());
 
   hid = new BLEHIDDevice(pServer);
   Serial.println("HID created");
@@ -150,12 +185,12 @@ void setupGamepadBLE(){
   pInput=hid->inputReport(1);
 	pOutput=hid->outputReport(1);
 
+  hid->manufacturer();
+	hid->manufacturer(manufacturerName);
+
   hid->pnp(0x1,0x2e5,0xabcd,0x0110);
 	hid->hidInfo(0x00,0x01);
 
-  hid->manufacturer();
-	hid->manufacturer(manufacturerName);
-  
   hid->reportMap((uint8_t*)reportMapGamepad, sizeof(reportMapGamepad));
 	hid->startServices();
 
@@ -170,6 +205,8 @@ void setupGamepadBLE(){
 
   pAdvertising->start();
 
+
+//https://www.esp32.com/viewtopic.php?t=17230 - look at  ble se urity for pc
 	BLESecurity *pSecurity = new BLESecurity();
 	pSecurity->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_BOND);
 	pSecurity->setCapability(ESP_IO_CAP_NONE);
