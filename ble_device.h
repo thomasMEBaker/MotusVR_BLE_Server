@@ -8,19 +8,18 @@
 #include <string>
 #include <Arduino.h>
 
-class ble_device
-{
-  public:
-    ble_device();
+class ble_device {
+public:
+  ble_device();
 
-    static ble_device* CreateGamepad();
-    void setupExampleCode();
-    void setupGamepadBLE();
-    void toggleAButton();
-    void analogStockMovement();
-    void setupBatteryService();
+  static ble_device* CreateGamepad();
+  void run();
+
+  void setupExampleCode();
+  void setupGamepadBLE();
+  void toggleAButton();
+  void analogStockMovement();
+  void setupBatteryService();
 };
-
-
 
 #endif

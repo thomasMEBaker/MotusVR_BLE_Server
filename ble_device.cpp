@@ -121,17 +121,25 @@ public:
   }
 };
 
-ble_device::ble_device()
-{
-  setupExampleCode();
+ble_device::ble_device() {
+  ble_device::setupGamepadBLE();
+  //start();
+  ble_device::run();
 }
 
- ble_device* ble_device::CreateGamepad(void)
-{
-	//esp_log_level_set("*", ESP_LOG_DEBUG);
-	ble_device* pDevice = new ble_device();
-	return pDevice;
-} 
+void ble_device::run() {
+  while (true) {
+    ble_device::toggleAButton();
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+  }
+}
+
+
+ble_device* ble_device::CreateGamepad(void) {
+  //esp_log_level_set("*", ESP_LOG_DEBUG);
+  ble_device* pDevice = new ble_device();
+  return pDevice;
+}
 
 void ble_device::setupGamepadBLE() {
 
@@ -217,7 +225,9 @@ void ble_device::setupExampleCode() {
 void ble_device::toggleAButton() {
   //function to test gamepad on android & PC - use 3v to onto D23 to toggle A press on
   if (sendValues) {
+    Serial.println("Send Values = true!");
     if (digitalRead(23) == HIGH) {
+      Serial.println("PIN HIGH - SENDING!");
       uint8_t gamepadReport[] = { BUTTON_A_INDEX, 0, 0, 0 };
       pInput->setValue(gamepadReport, sizeof(gamepadReport));
       pInput->notify();

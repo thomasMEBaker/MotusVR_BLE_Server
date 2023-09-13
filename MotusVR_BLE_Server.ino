@@ -21,10 +21,11 @@ void setup() {
   Serial.begin(115200);
   pinMode(LED_BUILTIN, OUTPUT);
   Serial.println("Starting BLE");
-  gp=ble_device::CreateGamepad();
+  gp = ble_device::CreateGamepad();
 
-  imu=motus_imu::CreateIMU();
-
+  /*
+  imu=motus_imu::CreateIMU(); //not needed currently
+  */
 }
 
 void loop() {
