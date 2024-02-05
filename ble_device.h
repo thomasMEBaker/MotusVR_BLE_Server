@@ -2,11 +2,10 @@
 #define BLE_DEVICE_H
 
 #include <BLEDevice.h>
-#include <BLEUtils.h>
-#include <BLEHIDDevice.h>
 #include <BLEServer.h>
-//new
+#include <BLEUtils.h>
 #include <BLE2902.h>
+#include <BLEHIDDevice.h>
 #include <string>
 #include <Arduino.h>
 

@@ -6,30 +6,21 @@
 //https://github.com/T-vK/ESP32-BLE-Keyboard/blob/master/BleKeyboard.cpp
 
 // See the following for generating UUIDs - https://www.uuidgenerator.net/
-#define SERVICE_UUID "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
-#define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
-#define BATTERY_SERVICE_UUID "0000180F-0000-1000-8000-00805F9B34FB"
-#define BATTERY_LEVEL_UUID "0000180F-0000-1000-8000-00805F9B34FB"
-
 const char* CUSTOM_SERVICE_UUID="9c9d4aa7-8050-4c8a-bc67-146a66d0443e";
 const char*PRESET_CHARACTERISTIC_UUID="9c9d4aa7-8051-4c8a-bc67-146a66d0443e";
 const char*VOLUME_CHARACTERISTIC_UUID="9c9d4aa7-8052-4c8a-bc67-146a66d0443e";
 
-static BLEServer* pServer = NULL;
-static BLEAdvertising* pAdvertising;
-static BLEHIDDevice* hid;
-static BLEService* batteryService;
-static BLECharacteristic* pCharacteristic = NULL;
-static BLECharacteristic* batteryLevelCharacteristic;
 
+
+static BLEHIDDevice* hid;
+static BLECharacteristic* pInput=NULL;
+static BLECharacteristic* pOutput=NULL;
 static BLEService* pCustomPresetService=NULL;
 static BLECharacteristic* pCustomPresetCharacteristic=NULL;
 static BLECharacteristic* pCustomVolumeCharacteristic=NULL;
+static BLEServer * pServer=NULL;
 
 uint8_t gamepadReport[] = {0, 0, 0, 0};
-
-static BLECharacteristic* pInput = NULL;
-static BLECharacteristic* pOutput = NULL;
 
 std::string manufacturerName = "MotusVR";
 bool sendValues = false;
@@ -110,9 +101,6 @@ public:
     Serial.println("Disconnected device!");
     sendValues = false;
     digitalWrite(LED_BUILTIN, LOW);
-    
-    pAdvertising->start();
-
   };
   ble_device* mPad;
 };
@@ -228,13 +216,9 @@ void ble_device::setupGamepadBLE() {
   hid->reportMap((uint8_t*)reportMapGamepad, sizeof(reportMapGamepad));
   hid->startServices();
 
-  pAdvertising = BLEDevice::getAdvertising();
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->setAppearance(HID_GAMEPAD);  // WALKING DEVICE 0x440;
   pAdvertising->addServiceUUID(hid->hidService()->getUUID());
-  pAdvertising->setScanResponse(true);
-  pAdvertising->setMinPreferred(0x06);  // functions that help with iPhone connections issue
-  pAdvertising->setMaxPreferred(0x12);
-
   pAdvertising->start();
 
   uint8_t batteryLevel = 50; // 50% battery level
@@ -277,10 +261,12 @@ void ble_device::analogStockMovement() {
 }
 
 void ble_device::setupBatteryService() {
+  /*
   batteryService = pServer->createService(BATTERY_SERVICE_UUID);
   batteryLevelCharacteristic = batteryService->createCharacteristic(BATTERY_LEVEL_UUID, BLECharacteristic::PROPERTY_READ);
   uint8_t initialBatteryLevel = 50;
   batteryLevelCharacteristic->setValue(&initialBatteryLevel, 1);
   batteryService->start();
   pAdvertising->addServiceUUID(batteryService->getUUID());
+  */
 }
