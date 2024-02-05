@@ -2,11 +2,18 @@
 
 #define LED_BUILTIN 2
 
+//uses - https://github.com/espressif/arduino-esp32
+//https://github.com/T-vK/ESP32-BLE-Keyboard/blob/master/BleKeyboard.cpp
+
 // See the following for generating UUIDs - https://www.uuidgenerator.net/
 #define SERVICE_UUID "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
 #define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 #define BATTERY_SERVICE_UUID "0000180F-0000-1000-8000-00805F9B34FB"
 #define BATTERY_LEVEL_UUID "0000180F-0000-1000-8000-00805F9B34FB"
+
+const char* CUSTOM_SERVICE_UUID="9c9d4aa7-8050-4c8a-bc67-146a66d0443e";
+const char*PRESET_CHARACTERISTIC_UUID="9c9d4aa7-8051-4c8a-bc67-146a66d0443e";
+const char*VOLUME_CHARACTERISTIC_UUID="9c9d4aa7-8052-4c8a-bc67-146a66d0443e";
 
 static BLEServer* pServer = NULL;
 static BLEAdvertising* pAdvertising;
@@ -14,6 +21,12 @@ static BLEHIDDevice* hid;
 static BLEService* batteryService;
 static BLECharacteristic* pCharacteristic = NULL;
 static BLECharacteristic* batteryLevelCharacteristic;
+
+static BLEService* pCustomPresetService=NULL;
+static BLECharacteristic* pCustomPresetCharacteristic=NULL;
+static BLECharacteristic* pCustomVolumeCharacteristic=NULL;
+
+uint8_t gamepadReport[] = {0, 0, 0, 0};
 
 static BLECharacteristic* pInput = NULL;
 static BLECharacteristic* pOutput = NULL;
@@ -31,40 +44,62 @@ const int BUTTON_A_INDEX = 1;  // Index of the A button
 
 const uint8_t reportMapGamepad[] = {
   0x05, 0x01,  // USAGE_PAGE (Generic Desktop)
-  0x09, 0x05,  // USAGE (Gamepad)
-  0xA1, 0x01,  // COLLECTION (Application)
+  0x01, 0x05,  // USAGE (Gamepad)
+  0x09, 0x01,  // COLLECTION (Application)
+  0x01,0x01, //   USAGE (Pointer)
+  0xa1,0x00, //   COLLECTION (Physical)
   0x85, 0x01,  //   REPORT_ID (1)
 
   // Buttons (1 to 16)
-  0x05, 0x09,  //   USAGE_PAGE (Button)
+  0x09, 0x09,  //   USAGE_PAGE (Button)
   0x19, 0x01,  //   USAGE_MINIMUM (Button 1)
-  0x29, 0x10,  //   USAGE_MAXIMUM (Button 16)
+  0x29, 0x08,  //   USAGE_MAXIMUM (Button 16)
   0x15, 0x00,  //   LOGICAL_MINIMUM (0)
-  0x25, 0x01,  //   LOGICAL_MAXIMUM (1)
-  0x95, 0x10,  //   REPORT_COUNT (16)
-  0x75, 0x01,  //   REPORT_SIZE (1)
+  0x29, 0x08,  //   LOGICAL_MAXIMUM (1)
+  0x75,0x01, //   REPORT_SIZE (1)
+  0x95, 0x08,  //   REPORT_COUNT (16)
   0x81, 0x02,  //   INPUT (Data,Var,Abs)
 
-  // Padding to align to the next byte
-  0x95, 0x06,  //   REPORT_COUNT (6)
-  0x75, 0x02,  //   REPORT_SIZE (2)
-  0x81, 0x03,  //   INPUT (Cnst,Var,Abs)
+ // ------------------------------------------------- Padding
+  // REPORT_SIZE(1),      0x01, //     REPORT_SIZE (1)
+  // REPORT_COUNT(1),     0x08, //     REPORT_COUNT (8)
+  // INPUT(1),         0x03, //     INPUT (Constant, Variable, Absolute) ;8 bit padding
+  // ------------------------------------------------- X/Y position, Z/rZ position
+  
+  0x05,0x01, //     USAGE_PAGE (Generic Desktop)
+  0x30,0x30, //     USAGE (X)
+  0x31,0x31, //     USAGE (Y)
+  0x32,0x32, //     USAGE (Z)
+  0x35,0x35, //     USAGE (rZ)
+  0x33,0x33, //     USAGE (rX) Left Trigger
+  0x34,0x34, //     USAGE (rY) Right Trigger
+  0x15,0x0, //     LOGICAL_MINIMUM (0)
+  0x26,0xff,0x00, //     LOGICAL_MAXIMUM (255)
+  0x75,0x08, //     REPORT_SIZE (8)
+  0x95,0x06, //     REPORT_COUNT (6)
+  0x81,0x02, //     INPUT (Data, Variable, Absolute) ;6 bytes (X,Y,Z,rZ,lt,rt)
+  
+  0xc0,  // END_COLLECTION
 
-  // Analog Axes (X and Y)
-  0x05, 0x01,  //   USAGE_PAGE (Generic Desktop)
-  0x09, 0x30,  //   USAGE (X)
-  0x09, 0x31,  //   USAGE (Y)
-  0x15, 0x81,  //   LOGICAL_MINIMUM (-127)
-  0x25, 0x7F,  //   LOGICAL_MAXIMUM (127)
-  0x75, 0x08,  //   REPORT_SIZE (8)
-  0x95, 0x02,  //   REPORT_COUNT (2)
-  0x81, 0x02,  //   INPUT (Data,Var,Abs)
+  // output report
+  0x06,0x00,0xff, // vendor specific code
+  0x09, 0x21, // usage Output Report Data
+  0x15,0x00,
+  0x26,  0x7f,
+  0x75,0x08,
+  0x95,0x01,
+  0x91,0x02, // data,var,abs
 
-  0xC0  // END_COLLECTION
+  0xc0 //     END_COLLECTION (application)
+
 };
 
 class MyCallbacks : public BLEServerCallbacks {
 public:
+	MyCallbacks(ble_device* pad)
+	{
+		mPad=pad;
+	}
   void onConnect(BLEServer* pServer) {
     Serial.println("Connected device!");
     sendValues = true;
@@ -75,7 +110,11 @@ public:
     Serial.println("Disconnected device!");
     sendValues = false;
     digitalWrite(LED_BUILTIN, LOW);
+    
+    pAdvertising->start();
+
   };
+  ble_device* mPad;
 };
 
 class MySecurity : public BLESecurityCallbacks {
@@ -109,16 +148,29 @@ class MySecurity : public BLESecurityCallbacks {
 
 class MyCharacteristics : public BLECharacteristicCallbacks {
 public:
-  MyCharacteristics() {
+  MyCharacteristics(ble_device* pad) 
+  {
+    mPad=pad;
   }
 
   void onRead(BLECharacteristic* pCharacteristic) {
-    Serial.println("Characteristic Read Request");
+    if(pCharacteristic==pCustomVolumeCharacteristic){
+        Serial.println("Characteristic Read Request - volume");
+    }
+    if(pCharacteristic==pCustomPresetCharacteristic)
+		{
+      Serial.println("Read Request - preset");
+
+    }else{
+      Serial.println("Characteristic Read Request - unknown characteristic");
+      // Get and print the value for the unknown characteristic
+    }
   }
 
   void onWrite(BLECharacteristic* pCharacteristic) {
     Serial.println("Characteristic Write Request");
   }
+  	ble_device* mPad;
 };
 
 ble_device::ble_device() {
@@ -128,27 +180,28 @@ ble_device::ble_device() {
 }
 
 void ble_device::run() {
+  
   while (true) {
-    ble_device::toggleAButton();
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    toggleAButton();
+    delay(100);
   }
 }
 
 
 ble_device* ble_device::CreateGamepad(void) {
-  //esp_log_level_set("*", ESP_LOG_DEBUG);
   ble_device* pDevice = new ble_device();
   return pDevice;
 }
 
 void ble_device::setupGamepadBLE() {
 
-  BLEDevice::init("MotusVR_BLE_3c:71:bf:fd:49:a6");
+  BLEDevice::init("MotusVR");
   BLEAddress addr = BLEDevice::getAddress();
   Serial.println(addr.toString().c_str());
+  //BLEDevice::setDeviceName(std::string("MotusVR:")+addr.toString().substr(9));	
 
   pServer = BLEDevice::createServer();
-  pServer->setCallbacks(new MyCallbacks());
+  pServer->setCallbacks(new MyCallbacks(this));
   BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT_NO_MITM);
   BLEDevice::setSecurityCallbacks(new MySecurity());
 
@@ -157,13 +210,21 @@ void ble_device::setupGamepadBLE() {
 
   pInput = hid->inputReport(1);
   pOutput = hid->outputReport(1);
+  MyCharacteristics* changeHandler=new MyCharacteristics(this);
+  pInput->setCallbacks(changeHandler);
+	pOutput->setCallbacks(changeHandler);
 
   hid->manufacturer();
   hid->manufacturer(manufacturerName);
+  
+  pCustomPresetService = pServer->createService(CUSTOM_SERVICE_UUID);
+  pCustomPresetCharacteristic=pCustomPresetService->createCharacteristic(PRESET_CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_WRITE_NR | BLECharacteristic::PROPERTY_READ);
+	pCustomVolumeCharacteristic=pCustomPresetService->createCharacteristic(VOLUME_CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_WRITE_NR | BLECharacteristic::PROPERTY_READ);
+  pCustomPresetService->start();
 
   hid->pnp(0x1, 0x2e5, 0xabcd, 0x0110);
   hid->hidInfo(0x00, 0x01);
-
+  
   hid->reportMap((uint8_t*)reportMapGamepad, sizeof(reportMapGamepad));
   hid->startServices();
 
@@ -176,6 +237,9 @@ void ble_device::setupGamepadBLE() {
 
   pAdvertising->start();
 
+  uint8_t batteryLevel = 50; // 50% battery level
+	hid->setBatteryLevel(batteryLevel);
+
   //https://www.esp32.com/viewtopic.php?t=17230 - look at  ble se urity for pc
   BLESecurity* pSecurity = new BLESecurity();
   pSecurity->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_BOND);
@@ -186,46 +250,10 @@ void ble_device::setupGamepadBLE() {
   Serial.println("Characteristic defined!");
 }
 
-void ble_device::setupExampleCode() {
-  BLEDevice::init("Long name works now");
-  BLEServer* pServer = BLEDevice::createServer();
-
-  pServer->setCallbacks(new MyCallbacks());
-  BLEDevice::setSecurityCallbacks(new MySecurity());
-
-  BLEService* pService = pServer->createService(SERVICE_UUID);
-
-  pCharacteristic = pService->createCharacteristic(CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_INDICATE);
-
-  pCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED);
-
-  pCharacteristic->setCallbacks(new MyCharacteristics());
-  pCharacteristic->setValue("Hello World says Neil");
-
-  pCharacteristic->addDescriptor(new BLE2902());
-
-  //BLESecurity *pSecurity = new BLESecurity();
-  //pSecurity->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_BOND);
-  //pSecurity->setCapability(ESP_IO_CAP_NONE);
-  //pSecurity->setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
-
-  pService->start();
-  //BLEAdvertising *pAdvertising = pServer->getAdvertising();  // this still is working for backward compatibility
-  BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(SERVICE_UUID);
-
-  pAdvertising->setScanResponse(false);
-  pAdvertising->setMinPreferred(0x06);  // functions that help with iPhone connections issue
-  pAdvertising->setMinPreferred(0x12);
-
-  BLEDevice::startAdvertising();
-  Serial.println("Characteristic defined! Now you can read it in your phone!");
-}
-
 void ble_device::toggleAButton() {
   //function to test gamepad on android & PC - use 3v to onto D23 to toggle A press on
   if (sendValues) {
-    Serial.println("Send Values = true!");
+    Serial.println("Sending Data");
     if (digitalRead(23) == HIGH) {
       Serial.println("PIN HIGH - SENDING!");
       uint8_t gamepadReport[] = { BUTTON_A_INDEX, 0, 0, 0 };

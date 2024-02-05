@@ -5,6 +5,8 @@
 #include <BLEUtils.h>
 #include <BLEHIDDevice.h>
 #include <BLEServer.h>
+//new
+#include <BLE2902.h>
 #include <string>
 #include <Arduino.h>
 

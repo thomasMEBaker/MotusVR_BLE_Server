@@ -1,5 +1,4 @@
 #include "ble_device.h"
-#include "motus_imu.h"
 
 #define LED_BUILTIN 2
 
@@ -15,7 +14,6 @@ Change to dynamically changing mac address name
 //https://github.com/espressif/arduino-esp32/tree/master/libraries/BLE
 
 static ble_device *gp;
-static motus_imu *imu;
 
 void setup() {
   Serial.begin(115200);
